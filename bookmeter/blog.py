@@ -15,9 +15,27 @@ class Book:
         self.book_format = book_format
         self.comment = comment
 
+    def __str__(self):
+        s = '''## {title}
+読了日:{read} 著者:{author}
+
+[asin:{asin}:detail]
+
+{comment}
+'''.format(
+            title=self.title,
+            read=self.read,
+            author=self.author,
+            asin=self.asin,
+            comment="\n".join(self.comment),
+        )
+
+        return s
+
 
 class BookmeterSummary:
-    def __init__(self, count: int, pages: int, link: str):
+    def __init__(self, date: str, count: int, pages: int, link: str):
+        self.date = date
         self.count = count
         self.pages = pages
         self.link = link
@@ -26,34 +44,49 @@ class BookmeterSummary:
     def add_book(self, book):
         self.books.append(book)
 
+    def filter(self, book_format):
+        return [book for book in self.books if book.book_format == book_format]
 
-TEMPLATE = [
-    "----\n",
-    "\n",
-    "- 今月の最も良かった本は、「###」\n"
-    "- [memo]\n"
-]
+    def __str__(self):
+        s = f'''<!-- more -->
+
+- {self.date}の読書メーター
+- 読んだ本の数：{self.count}冊
+- 読んだページ数：{self.pages}ページ
+
+[{self.link}:embed:cite]
+
+# Kindle
+{''.join([str(book) for book in self.filter('Kindle')])}
+# Kindle Unlimited
+
+# Audible
+{''.join([str(book) for book in self.filter('Audible')])}
+
+# 大学図書館
+
+----
+
+- 今月の最も良かった本は、「###」
+- [memo]'''
+
+        return s
 
 
-def main(argv):
-    lines = sys.stdin.readlines()
+def main():
+    summary = parse_bookmeter_summary(sys.stdin.readlines())
 
-    lines = [replace_bookmeter_url(line) for line in lines]
-    lines = [line.replace('■', '## ') if line.startswith('■') else line for line in lines]
-    lines = [line for line in lines if not line.startswith('ナイス数')]
-    lines = ['- ' + line if line.startswith('読んだ') else line for line in lines]
-    lines = ['- ' + line if line.endswith('の読書メーター\n') else line for line in lines]
-    lines = ["[{}:embed:cite]\n\n".format(line.strip()) if 'summary' in line else line for line in lines]
-
-    print("".join(lines))
+    print(summary)
 
 
-def parse_bookmeter_summary(lines):
-    summary = BookmeterSummary(0, 0, '')
+def parse_bookmeter_summary(lines) -> BookmeterSummary:
+    summary = BookmeterSummary('', 0, 0, '')
     lines = [line for line in [line.strip() for line in lines] if line != '']
     for line in lines:
         if line.startswith('https://bookmeter.com/users/'):
             summary.link = line
+        elif line.endswith('の読書メーター'):
+            summary.date = re.match(r'(\d+年\d+月)の読書メーター', line).group(1)
         elif line.startswith('読んだ本'):
             summary.count = int(re.match(r'読んだ本の数：(\d+)冊', line).group(1))
         elif line.startswith('読んだページ'):
@@ -81,20 +114,6 @@ def parse_bookmeter_summary(lines):
             summary.add_book(book)
 
     return summary
-
-
-def replace_bookmeter_url(line):
-    if line.startswith('https://bookmeter.com/books/'):
-        response = requests.get(line)
-        sleep(1)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            amazon_link = soup.find('a', class_='image__cover')['href'].split('?')[0]
-            amazon_link = re.sub(r'/ref=.*', '', amazon_link)
-
-            asin = amazon_link.split('/')[-1]
-            line = "[asin:{}:detail]\n".format(asin)
-    return line
 
 
 def bookmeter_url_to_asin(bookmeter_url):
@@ -131,5 +150,4 @@ def get_book_format_by_asin(asin):
 
 
 if __name__ == '__main__':
-    # main(sys.argv)
-    parse_bookmeter_summary(sys.stdin.readlines())
+    main()
